@@ -7,16 +7,18 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/calebbramel/azpgp/internal/azenv"
+	"github.com/calebbramel/azpgp/internal/blobhandler"
 	"github.com/calebbramel/azpgp/internal/keyvault"
+	"github.com/calebbramel/azpgp/internal/logger"
 	"github.com/calebbramel/azpgp/internal/pgp"
-	storageBlob "github.com/calebbramel/azpgp/internal/storage"
 )
 
 func DecryptHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
 		vaultName := os.Getenv("KEY_VAULT_NAME")
-		azClient, err := keyvault.AuthenticateSecrets(azCredential, vaultName)
+		azClient, err := keyvault.AuthenticateSecrets(azenv.AzCredential, vaultName)
 		if err != nil {
 			http.Error(w, "Unable to authenticate to keyvault", http.StatusBadRequest)
 			return
@@ -78,7 +80,6 @@ func DecryptHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Unable to decode recipient", http.StatusBadRequest)
 			return
 		}
-
 		publicKeyStr, err := keyvault.GetSecret(azClient, recipient)
 		if err != nil {
 			http.Error(w, "Error retrieving public key", http.StatusInternalServerError)
@@ -90,27 +91,38 @@ func DecryptHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Unable to locate private key fingerprint", http.StatusInternalServerError)
 			return
 		}
+		fileFingerprint, err := pgp.GetFingerprintFromEncryptedFile(encryptedFile)
+		if err != nil {
+			logger.HandleErrf("error retrieving fingerprint from file: %v", err)
+			http.Error(w, "Unable to locate private key fingerprint", http.StatusInternalServerError)
+			return
+		}
+		logger.Debugf("fingerprint from file: %v", fileFingerprint)
 		privateKeyStr, err := keyvault.GetSecret(azClient, fingerprint)
 		if err != nil {
 			http.Error(w, "Unable to locate private key", http.StatusInternalServerError)
 			return
 		}
 
+		//		logger.Debugf("public key: %s", publicKeyStr)
+		//		logger.Debugf("private key: %s", privateKeyStr)
+		//		logger.Debugf("fingerprint: %s", fingerprint)
+
 		// Decrypt the file
 		decryptedFile, err := pgp.Decrypt(pgp.PGPHandler, publicKeyStr, privateKeyStr, encryptedFile)
 		if err != nil {
-			log.Fatalf("Unable to decrypt file %v", err)
+			logger.Debugf("Unable to decrypt file: %v", err)
 			http.Error(w, "Unable to decrypt file", http.StatusInternalServerError)
 			return
 		}
 
 		// Upload the decrypted file to Azure Blob Storage
-		blobClient, err := storageBlob.AuthenticateAccount(azCredential, os.Getenv("STORAGE_ACCOUNT_NAME"))
+		blobClient, err := blobhandler.AuthenticateAccount(azenv.AzCredential, os.Getenv("STORAGE_ACCOUNT_NAME"))
 		if err != nil {
 			log.Fatalf("Failed to authenticate to Storage Account: %s\n", err)
 		}
 		blobName := filename[:len(filename)-len(".pgp")]
-		blobURL, err := storageBlob.Create(blobClient, os.Getenv("STORAGE_ACCOUNT_NAME"), os.Getenv("STORAGE_CONTAINER_NAME"), decryptedFile, blobName)
+		blobURL, err := blobhandler.Create(blobClient, os.Getenv("STORAGE_ACCOUNT_NAME"), os.Getenv("STORAGE_CONTAINER_NAME"), decryptedFile, blobName)
 		if err != nil {
 			http.Error(w, "Unable to upload file to Azure Blob Storage", http.StatusInternalServerError)
 			return

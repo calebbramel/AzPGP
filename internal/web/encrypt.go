@@ -8,16 +8,18 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/calebbramel/azpgp/internal/azenv"
+	"github.com/calebbramel/azpgp/internal/blobhandler"
 	"github.com/calebbramel/azpgp/internal/keyvault"
+	"github.com/calebbramel/azpgp/internal/logger"
 	"github.com/calebbramel/azpgp/internal/pgp"
-	storageBlob "github.com/calebbramel/azpgp/internal/storage"
 )
 
 func EncryptHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
 		vaultName := os.Getenv("KEY_VAULT_NAME")
-		azClient, err := keyvault.AuthenticateSecrets(azCredential, vaultName)
+		azClient, err := keyvault.AuthenticateSecrets(azenv.AzCredential, vaultName)
 		if err != nil {
 			http.Error(w, "Unable to authenticate to keyvault", http.StatusBadRequest)
 			return
@@ -87,11 +89,13 @@ func EncryptHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		fingerprint, err := pgp.FindFingerprintByID(pgp.RecipientsList, recipient)
+		logger.HandleErrf("Error retrieving fingerprint from file: %v", err)
 		if err != nil {
 			http.Error(w, "Unable to locate private key fingerprint", http.StatusInternalServerError)
 			return
 		}
 		privateKeyStr, err := keyvault.GetSecret(azClient, fingerprint)
+		logger.HandleErrf("Error retrieving private key: %s", err)
 		if err != nil {
 			http.Error(w, "Unable to locate private key", http.StatusInternalServerError)
 			return
@@ -106,12 +110,12 @@ func EncryptHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Upload the encrypted file to Azure Blob Storage
-		blobClient, err := storageBlob.AuthenticateAccount(azCredential, os.Getenv("STORAGE_ACCOUNT_NAME"))
+		blobClient, err := blobhandler.AuthenticateAccount(azenv.AzCredential, os.Getenv("STORAGE_ACCOUNT_NAME"))
 		if err != nil {
 			log.Fatalf("Failed to authenticate to Storage Account: %s\n", err)
 		}
 		blobName := fmt.Sprintf("%s.pgp", filename)
-		blobURL, err := storageBlob.Create(blobClient, os.Getenv("STORAGE_ACCOUNT_NAME"), os.Getenv("STORAGE_CONTAINER_NAME"), encryptedFile, blobName)
+		blobURL, err := blobhandler.Create(blobClient, os.Getenv("STORAGE_ACCOUNT_NAME"), os.Getenv("STORAGE_CONTAINER_NAME"), encryptedFile, blobName)
 		if err != nil {
 			http.Error(w, "Unable to upload file to Azure Blob Storage", http.StatusInternalServerError)
 			return

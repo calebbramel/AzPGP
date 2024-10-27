@@ -6,14 +6,13 @@ import (
 	"log"
 	"os"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets"
+	"github.com/calebbramel/azpgp/internal/azenv"
+	"github.com/calebbramel/azpgp/internal/blobhandler"
 	"github.com/calebbramel/azpgp/internal/keyvault"
 	"github.com/calebbramel/azpgp/internal/pgp"
-	storageBlob "github.com/calebbramel/azpgp/internal/storage"
 )
 
-var azCredential *azidentity.ClientSecretCredential
 var secrets []azsecrets.SecretProperties
 
 type Recipient struct {
@@ -43,9 +42,13 @@ func test_json() {
 	fmt.Println(string(jsonData))
 }
 
+func test_heartbeat() {
+	go keyvault.HeartBeat(azenv.AzCredential) // sync secrets every 15 seconds
+}
+
 func test_upload() {
 	accountName := "stinfrasbcus001"
-	client, err := storageBlob.AuthenticateAccount(azCredential, accountName)
+	client, err := blobhandler.AuthenticateAccount(azenv.AzCredential, accountName)
 	if err != nil {
 		log.Fatalf("Failed to authenticate to storage account: %v", err)
 	}
@@ -53,7 +56,7 @@ func test_upload() {
 	containerName := "caleb"
 	filePath := "test2.txt"
 	testContent := []byte("test content 2: electric boogaloo")
-	upload, err := storageBlob.Create(client, accountName, containerName, testContent, filePath)
+	upload, err := blobhandler.Create(client, accountName, containerName, testContent, filePath)
 	if err != nil {
 		log.Fatalf("Failed to upload data: %v", err)
 	}
@@ -89,7 +92,7 @@ func test_retrieve() {
 	vaultName := os.Getenv("KEY_VAULT_NAME")
 
 	// Example usage
-	client, err := keyvault.AuthenticateSecrets(azCredential, vaultName)
+	client, err := keyvault.AuthenticateSecrets(azenv.AzCredential, vaultName)
 	if err != nil {
 		log.Fatalf("Failed to authenticate to Key Vault: %v", err)
 	}
@@ -182,7 +185,7 @@ FpsXV9x/08dIdfZLAQVdQowgeBsxCw==
 	vaultName := os.Getenv("KEY_VAULT_NAME")
 
 	// Authenticate to Key Vault
-	client, err := keyvault.AuthenticateSecrets(azCredential, vaultName)
+	client, err := keyvault.AuthenticateSecrets(azenv.AzCredential, vaultName)
 	if err != nil {
 		log.Fatalf("Failed to authenticate to Key Vault: %v", err)
 	}
@@ -202,7 +205,7 @@ func test_keyvault(fingerprint string) {
 	vaultName := os.Getenv("KEY_VAULT_NAME")
 
 	// Authenticate to Key Vault
-	client, err := keyvault.AuthenticateSecrets(azCredential, vaultName)
+	client, err := keyvault.AuthenticateSecrets(azenv.AzCredential, vaultName)
 	if err != nil {
 		log.Fatalf("Failed to authenticate to Key Vault: %v", err)
 	}

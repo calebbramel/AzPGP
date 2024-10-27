@@ -6,18 +6,11 @@ import (
 	"io"
 
 	"github.com/ProtonMail/gopenpgp/v3/crypto"
-	"github.com/calebbramel/azpgp/internal/debug"
+	"github.com/calebbramel/azpgp/internal/logger"
 )
 
-type Key struct {
-	Value       string
-	Fingerprint string
-	Name        string
-	ID          string
-}
-
 func Encrypt(PGPHandler *crypto.PGPHandle, publicKeyStr string, privateKeyStr string, sourceFile []byte) ([]byte, error) {
-	debug.Logf(debugFlag, "PrivateKey %s\n", privateKeyStr)
+	logger.Debugf("PrivateKey %s\n", privateKeyStr)
 
 	// Encrypt data with a public key and sign with private key streaming
 	publicKey, err := crypto.NewKeyFromArmored(publicKeyStr)
